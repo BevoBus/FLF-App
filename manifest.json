@@ -1,0 +1,12 @@
+{
+  "name": "Gliding Club App",
+  "short_name": "GlidingApp",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0070f3",
+  "description": "Gliding club app with checklists and weather briefing",
+  "icons": [
+    { "src": "logo.png", "sizes": "192x192", "type": "image/png" }
+  ]
+}
