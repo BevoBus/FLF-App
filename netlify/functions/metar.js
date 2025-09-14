@@ -1,9 +1,14 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 exports.handler = async function(event, context) {
+  // ✅ define headers once at the top
+  const headers = { 
+    "Access-Control-Allow-Origin": "*", 
+    "Content-Type": "application/json" 
+  };
+
   try {
     const params = event.queryStringParameters || {};
-    const headers = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" };
     const base = "https://aviationweather.gov";
     const format = "json";
 
@@ -35,16 +40,19 @@ exports.handler = async function(event, context) {
     if (params.near) {
       const center = (params.near || "").toUpperCase();
       const radiusMiles = Math.max(1, Math.min(300, Number(params.radius || 100)));
+
       const stPath = `/api/data/airport?ids=${encodeURIComponent(center)}&format=json`;
       const stRes = await fetch(base + stPath, { headers: { "user-agent": "gliding-club-app/1.0" } });
       if (!stRes.ok) {
         return { statusCode: stRes.status, headers, body: JSON.stringify({ error: "Failed to look up airport" }) };
       }
+
       const airports = await stRes.json();
       const ap = Array.isArray(airports) ? airports[0] : (airports && airports.airport) || null;
       if (!ap || !ap.lat || !ap.lon) {
         return { statusCode: 404, headers, body: JSON.stringify({ error: "Airport coordinates not found" }) };
       }
+
       const lat = Number(ap.lat);
       const lon = Number(ap.lon);
       const dLat = milesToLatDeg(radiusMiles);
@@ -57,7 +65,9 @@ exports.handler = async function(event, context) {
     }
 
     return { statusCode: 400, headers, body: JSON.stringify({ error: "Use ?ids=KGRK or ?near=KGRK&radius=100" }) };
+
   } catch (e) {
+    // ✅ headers is defined, so this will not crash
     return { statusCode: 500, headers, body: JSON.stringify({ error: e.message }) };
   }
 }
