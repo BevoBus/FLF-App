@@ -28,19 +28,19 @@ exports.handler = async function(event, context) {
     function milesToLatDeg(mi) { return mi / 69.0; }
     function milesToLonDeg(mi, lat) { return mi / (69.172 * Math.cos(lat * Math.PI/180)); }
 
-    // Handle ?ids=KGRK style
+    // Handle ?ids=KGRK
     if (params.ids) {
       const ids = params.ids.toUpperCase();
       const path = `/api/data/metar?ids=${encodeURIComponent(ids)}&format=${format}`;
       return await awc(path);
     }
 
-    // Handle ?near=KGRK&radius=100 style
+    // Handle ?near=KGRK&radius=100
     if (params.near) {
       const center = (params.near || "").toUpperCase();
       const radiusMiles = Math.max(1, Math.min(300, Number(params.radius || 100)));
 
-      // Get airport coords
+      // Get airport coordinates
       const stPath = `/api/data/airport?ids=${encodeURIComponent(center)}&format=json`;
       const stRes = await fetch(base + stPath, { headers: { "user-agent": "gliding-club-app/1.0" } });
       if (!stRes.ok) {
@@ -64,7 +64,6 @@ exports.handler = async function(event, context) {
       return await awc(path);
     }
 
-    // Bad request
     return { statusCode: 400, headers, body: JSON.stringify({ error: "Use ?ids=KGRK or ?near=KGRK&radius=100" }) };
 
   } catch (e) {
