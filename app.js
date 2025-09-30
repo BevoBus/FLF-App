@@ -35,6 +35,9 @@ function el(tag, attrs={}, children=[]) {
 function navButton(label, to) {
   return el('button', { onclick: () => { page = to; render(); } , text: label });
 }
+
+function toArray(d){ return Array.isArray(d) ? d : (d ? [d] : []); }
+
 function renderHome() {
   return el('div', {}, [
     el('h1', { text: 'Welcome to the Gliding Club App' }),
@@ -56,6 +59,7 @@ function renderGliders() {
     ])
   ]);
 }
+
 function renderGliderPrep(glider) {
   const within = (pilotWeight + passengerWeight + ballast) <= glider.maxWeight;
   return el('div', {}, [
@@ -86,38 +90,30 @@ function renderGliderPrep(glider) {
     ])
   ]);
 }
+
 async function fetchJSON(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error('Fetch failed: ' + res.status);
   return res.json();
 }
 
-function renderMetarDecoded(m) {
-  const p = m || {};
-  const parts = [];
-  if (p.icaoId) parts.push(`Station: ${p.icaoId}`);
-  if (p.obsTime) parts.push(`Time: ${p.obsTime}`);
-  if (p.windDir !== undefined && p.windSpeed !== undefined) {
-    const gust = p.windGust ? ` gust ${p.windGust} kt` : '';
-    parts.push(`Wind: ${p.windDir}° at ${p.windSpeed} kt${gust}`);
-  }
-  if (p.visibility) parts.push(`Visibility: ${p.visibility} sm`);
-  if (p.clouds && p.clouds.length) {
-    const clouds = p.clouds.map(c => `${c.cover} ${c.base?c.base+' ft':''}`.trim()).join(', ');
-    parts.push(`Clouds: ${clouds}`);
-  }
-  if (p.temp && p.dew) parts.push(`Temp/Dew: ${p.temp}°C / ${p.dew}°C`);
-  if (p.altim) parts.push(`Altimeter: ${p.altim} inHg`);
-  if (p.remarks) parts.push(`Remarks: ${p.remarks}`);
-  return parts.join('\n');
-}
 function metarCard(entry) {
-  const raw = entry.rawOb || entry.rawText || '(raw text unavailable)';
-  const decoded = renderMetarDecoded(entry);
+  const icao = entry.icaoId || '';
+  const name = entry.name || '';
+  const cat  = entry.fltCat || '';
+  const raw  = entry.raw || entry.rawOb || entry.rawText || '(raw text unavailable)';
+
+  const header = [icao, name].filter(Boolean).join(' – ');
+  const tag = cat ? el('span', { class: 'wx-tag ' + cat, text: cat }) : null;
+
+  const details = el('details', {}, [
+    el('summary', { text: 'Show Raw Text' }),
+    el('pre', {}, [ raw ])
+  ]);
+
   return el('div', { class: 'card wx' }, [
-    el('h3', { text: `METAR ${entry.icaoId || ''}` }),
-    el('pre', {}, [ raw ]),
-    el('pre', {}, [ decoded ])
+    el('h3', {}, [document.createTextNode(header), tag ? document.createTextNode(' ') : null, tag]),
+    details
   ]);
 }
 
@@ -126,23 +122,32 @@ async function loadStation(station, root) {
   const url = '/.netlify/functions/metar?ids=' + encodeURIComponent(station);
   try {
     const data = await fetchJSON(url);
-    const items = (data && data.metars) || data || [];
-    if (!items.length) root.appendChild(el('div', { class: 'card wx' }, [ el('p', { text: 'No recent METAR available.' }) ]));
+    if (data && data.error) throw new Error(data.error);
+    const items = toArray(data);
+    if (!items.length) {
+      root.appendChild(el('div', { class: 'card wx' }, [ el('p', { text: 'No recent METAR available.' }) ]));
+      return;
+    }
     items.forEach(e => root.appendChild(metarCard(e)));
   } catch (e) {
-    root.appendChild(el('div', { class: 'card wx' }, [ el('p', { class: 'bad', text: e.message }) ]));
+    root.appendChild(el('div', { class: 'card wx' }, [ el('p', { class: 'bad', text: 'Fetch failed: ' + e.message }) ]));
   }
 }
+
 async function loadNearby(center, miles, root) {
   document.querySelectorAll('.wx').forEach(e => e.remove());
   const url = '/.netlify/functions/metar?near=' + encodeURIComponent(center) + '&radius=' + miles;
   try {
     const data = await fetchJSON(url);
-    const items = (data && data.metars) || data || [];
-    if (!items.length) root.appendChild(el('div', { class: 'card wx' }, [ el('p', { text: 'No nearby METARs found.' }) ]));
+    if (data && data.error) throw new Error(data.error);
+    const items = toArray(data);
+    if (!items.length) {
+      root.appendChild(el('div', { class: 'card wx' }, [ el('p', { text: 'No nearby METARs found.' }) ]));
+      return;
+    }
     items.forEach(e => root.appendChild(metarCard(e)));
   } catch (e) {
-    root.appendChild(el('div', { class: 'card wx' }, [ el('p', { class: 'bad', text: e.message }) ]));
+    root.appendChild(el('div', { class: 'card wx' }, [ el('p', { class: 'bad', text: 'Fetch failed: ' + e.message }) ]));
   }
 }
 
@@ -160,6 +165,7 @@ async function renderWeather() {
   await loadStation('KGRK', container);
   return container;
 }
+
 function renderEmergency() {
   return el('div', {}, [
     navButton('← Back', 'home'),

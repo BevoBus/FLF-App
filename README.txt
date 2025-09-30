@@ -1,33 +1,27 @@
-Gliding Club App
-=================
+Gliding Club App - Full Rebuild
+================================
 
-This is a web app for glider preparation and weather briefing.
+This package contains a working static web app + a Netlify serverless function.
 
-Files:
-------
-index.html      - Main entry point
-app.js          - App logic (home, glider prep, weather briefing)
-manifest.json   - PWA manifest
-logo.png        - Club logo (replace with your own)
-netlify.toml    - Netlify config
-netlify/functions/metar.js - Serverless function for weather API proxy
+Files
+-----
+index.html                  Main page
+app.js                      App logic (Home, Glider Prep, Weather, Emergency)
+manifest.json               PWA manifest
+logo.png                    Placeholder logo (replace as needed)
+netlify.toml                Netlify config (publish='.'; functions='netlify/functions')
+netlify/functions/metar.js  Serverless function proxy for AviationWeather.gov
 
-Deployment:
------------
-1. Unzip this folder.
-2. In Netlify dashboard, go to your site -> Deploys -> drag and drop this folder.
-3. Check Functions tab -> ensure "metar" function is listed.
-4. Test: https://<yoursite>.netlify.app/.netlify/functions/metar?ids=KGRK
-   should return JSON data.
+Deploy (GitHub + Netlify recommended)
+-------------------------------------
+1) Push this folder to a GitHub repo (top-level files in repo root).
+2) In Netlify: Add new site -> Import from Git -> pick the repo.
+   Build command: (leave empty)   Publish directory: .
+3) After first deploy, test:
+   https://<yoursite>.netlify.app/.netlify/functions/metar?ids=KGRK
 
-Usage:
-------
-- Weather Briefing: fetches METAR from AviationWeather.gov (KGRK + nearby).
-- Glider Preparation: checklists + weight/balance.
-- Emergency Procedures: placeholder for future content.
-
-Testing Locally:
-----------------
-Run a local server:
-  python3 -m http.server 8080
-Open http://localhost:8080 in your browser.
+Local test (UI only)
+--------------------
+python -m http.server 8080
+Open http://localhost:8080
+Note: Weather calls require Netlify function; will not work locally or on GitHub Pages.
