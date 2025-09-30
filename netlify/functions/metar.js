@@ -1,10 +1,7 @@
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-
 exports.handler = async function(event, context) {
-  // ✅ define headers once at the top
-  const headers = { 
-    "Access-Control-Allow-Origin": "*", 
-    "Content-Type": "application/json" 
+  const headers = {
+    "Access-Control-Allow-Origin": "*",
+    "Content-Type": "application/json"
   };
 
   try {
@@ -12,62 +9,93 @@ exports.handler = async function(event, context) {
     const base = "https://aviationweather.gov";
     const format = "json";
 
-    async function awc(path) {
+    async function fetchJson(path) {
       const res = await fetch(base + path, { headers: { "user-agent": "gliding-club-app/1.0" } });
-      if (!res.ok) {
-        const txt = await res.text();
-        return { statusCode: res.status, headers, body: JSON.stringify({ error: txt || res.statusText }) };
-      }
-      const ct = res.headers.get("content-type") || "";
-      if (ct.includes("application/json")) {
-        const data = await res.json();
-        return { statusCode: 200, headers, body: JSON.stringify(data) };
-      } else {
-        const txt = await res.text();
-        return { statusCode: 200, headers, body: JSON.stringify({ text: txt }) };
-      }
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      return res.json();
     }
 
-    function milesToLatDeg(mi) { return mi / 69.0; }
-    function milesToLonDeg(mi, lat) { return mi / (69.172 * Math.cos(lat * Math.PI/180)); }
+    function toArray(payload) {
+      if (!payload) return [];
+      if (Array.isArray(payload)) return payload;
+      if (Array.isArray(payload.metars)) return payload.metars;
+      return [];
+    }
+
+    function normalizeMetar(m) {
+      if (!m) return null;
+      const altInHg = (m.altim != null)
+        ? (Math.round((Number(m.altim) / 33.8638866667) * 100) / 100).toFixed(2)
+        : null;
+      return {
+        icaoId: m.icaoId || "",
+        name: m.name || "",
+        time: m.reportTime || m.obsTime || "",
+        fltCat: m.fltCat || "",
+        raw: m.rawOb || m.rawText || "",
+        weather: {
+          tempC: m.temp ?? null,
+          dewpointC: m.dewp ?? null,
+          wind: (m.wdir != null && m.wspd != null)
+            ? `${m.wdir}° at ${m.wspd} kt`
+            : (m.wspd != null ? `${m.wspd} kt` : ""),
+          visibility: (m.visib != null) ? `${m.visib} sm` : "",
+          altimeterInHg: altInHg
+        },
+        clouds: Array.isArray(m.clouds) ? m.clouds.map(c => ({
+          cover: c.cover || "",
+          baseFt: c.base ?? null
+        })) : []
+      };
+    }
 
     if (params.ids) {
-      const ids = params.ids.toUpperCase();
-      const path = `/api/data/metar?ids=${encodeURIComponent(ids)}&format=${format}`;
-      return await awc(path);
+      const icao = params.ids.toUpperCase().trim();
+      const raw = await fetchJson(`/api/data/metar?ids=${encodeURIComponent(icao)}&format=${format}`);
+      const arr = toArray(raw);
+      const latest = arr.length ? arr[0] : null;
+      const out = normalizeMetar(latest);
+      if (!out) {
+        return { statusCode: 200, headers, body: JSON.stringify({ error: "No recent METAR found for station." }) };
+      }
+      return { statusCode: 200, headers, body: JSON.stringify(out) };
     }
 
     if (params.near) {
-      const center = (params.near || "").toUpperCase();
+      const center = params.near.toUpperCase().trim();
       const radiusMiles = Math.max(1, Math.min(300, Number(params.radius || 100)));
 
-      const stPath = `/api/data/airport?ids=${encodeURIComponent(center)}&format=json`;
-      const stRes = await fetch(base + stPath, { headers: { "user-agent": "gliding-club-app/1.0" } });
-      if (!stRes.ok) {
-        return { statusCode: stRes.status, headers, body: JSON.stringify({ error: "Failed to look up airport" }) };
+      const apRaw = await fetchJson(`/api/data/airport?ids=${encodeURIComponent(center)}&format=json`);
+      const ap = Array.isArray(apRaw) ? apRaw[0] : apRaw?.airport;
+      if (!ap || ap.lat == null || ap.lon == null) {
+        return { statusCode: 404, headers, body: JSON.stringify({ error: "Center airport not found" }) };
       }
 
-      const airports = await stRes.json();
-      const ap = Array.isArray(airports) ? airports[0] : (airports && airports.airport) || null;
-      if (!ap || !ap.lat || !ap.lon) {
-        return { statusCode: 404, headers, body: JSON.stringify({ error: "Airport coordinates not found" }) };
+      const milesToLatDeg = (mi) => mi / 69.0;
+      const milesToLonDeg = (mi, lat) => mi / (69.172 * Math.cos(lat * Math.PI / 180));
+      const lat = Number(ap.lat), lon = Number(ap.lon);
+      const dLat = milesToLatDeg(radiusMiles), dLon = milesToLonDeg(radiusMiles, lat);
+      const bbox = `${(lat - dLat).toFixed(4)},${(lon - dLon).toFixed(4)},${(lat + dLat).toFixed(4)},${(lon + dLon).toFixed(4)}`;
+
+      const raw = await fetchJson(`/api/data/metar?bbox=${bbox}&format=${format}`);
+      const arr = toArray(raw);
+
+      const seen = new Set();
+      const results = [];
+      for (const m of arr) {
+        const id = m.icaoId || "";
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const norm = normalizeMetar(m);
+        if (norm) results.push(norm);
       }
 
-      const lat = Number(ap.lat);
-      const lon = Number(ap.lon);
-      const dLat = milesToLatDeg(radiusMiles);
-      const dLon = milesToLonDeg(radiusMiles, lat);
-      const minLat = lat - dLat, maxLat = lat + dLat;
-      const minLon = lon - dLon, maxLon = lon + dLon;
-      const bbox = `${minLat.toFixed(4)},${minLon.toFixed(4)},${maxLat.toFixed(4)},${maxLon.toFixed(4)}`;
-      const path = `/api/data/metar?bbox=${encodeURIComponent(bbox)}&format=${format}`;
-      return await awc(path);
+      return { statusCode: 200, headers, body: JSON.stringify(results) };
     }
 
     return { statusCode: 400, headers, body: JSON.stringify({ error: "Use ?ids=KGRK or ?near=KGRK&radius=100" }) };
 
   } catch (e) {
-    // ✅ headers is defined, so this will not crash
     return { statusCode: 500, headers, body: JSON.stringify({ error: e.message }) };
   }
-}
+};

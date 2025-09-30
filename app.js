@@ -35,6 +35,86 @@ function el(tag, attrs={}, children=[]) {
 function navButton(label, to) {
   return el('button', { onclick: () => { page = to; render(); } , text: label });
 }
+
+// ----- Plain-English helpers -----
+function zulu(dt) {
+  try {
+    // supports "2025-09-15T02:00:00.000Z" or epoch seconds
+    if (typeof dt === 'number') return new Date(dt * 1000).toISOString().replace('.000','');
+    if (typeof dt === 'string') return new Date(dt).toISOString().replace('.000','');
+  } catch {}
+  return '';
+}
+
+function cardinalFromDegrees(deg) {
+  if (deg == null || isNaN(deg)) return '';
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  const i = Math.round(((deg % 360) / 22.5)) % 16;
+  return dirs[i];
+}
+
+function formatClouds(clouds) {
+  if (!Array.isArray(clouds) || clouds.length === 0) return 'Clear';
+  return clouds.map(c => {
+    const cover = c.cover || '';
+    const base = (c.baseFt ?? c.base);
+    const prettyBase = (base || base === 0) ? `${base.toLocaleString()} ft` : '';
+    // Translate FEW/SCT/BKN/OVC to words for students
+    const coverWord = ({
+      FEW: 'Few',
+      SCT: 'Scattered',
+      BKN: 'Broken',
+      OVC: 'Overcast'
+    }[cover] || cover);
+    return prettyBase ? `${coverWord} at ${prettyBase}` : coverWord;
+  }).join(', ');
+}
+
+function plainEnglish(entry) {
+  const w = entry.weather || {};
+  const lines = [];
+
+  // Flight category tag is visually shown; still include words for learners
+  if (entry.fltCat) lines.push(`Flight category: ${entry.fltCat}`);
+
+  // Time
+  const timeZ = zulu(entry.time);
+  if (timeZ) lines.push(`Observation time: ${timeZ.replace('T',' ').replace('Z','Z')}`);
+
+  // Wind
+  if (w.wind) {
+    // If wind like "100° at 9 kt", include cardinal
+    const m = /(\d+)[°] at (\d+)/.exec(w.wind || '');
+    if (m) {
+      const dir = Number(m[1]);
+      const spd = Number(m[2]);
+      lines.push(`Wind: ${cardinalFromDegrees(dir)} (${dir}°) at ${spd} kt`);
+    } else {
+      lines.push(`Wind: ${w.wind}`);
+    }
+  }
+
+  // Visibility
+  if (w.visibility) lines.push(`Visibility: ${w.visibility}`);
+
+  // Clouds
+  lines.push(`Clouds: ${formatClouds(entry.clouds)}`);
+
+  // Temps
+  if (w.tempC != null || w.dewpointC != null) {
+    const t = (w.tempC != null) ? `${w.tempC.toFixed ? w.tempC.toFixed(1) : w.tempC}°C` : '—';
+    const d = (w.dewpointC != null) ? `${w.dewpointC.toFixed ? w.dewpointC.toFixed(1) : w.dewpointC}°C` : '—';
+    lines.push(`Temperature/Dewpoint: ${t} / ${d}`);
+  }
+
+  // Altimeter
+  if (w.altimeterInHg != null) lines.push(`Altimeter: ${w.altimeterInHg} inHg`);
+
+  return lines;
+}
+
+function toArray(d){ return Array.isArray(d) ? d : (d ? [d] : []); }
+
 function renderHome() {
   return el('div', {}, [
     el('h1', { text: 'Welcome to the Gliding Club App' }),
@@ -56,6 +136,7 @@ function renderGliders() {
     ])
   ]);
 }
+
 function renderGliderPrep(glider) {
   const within = (pilotWeight + passengerWeight + ballast) <= glider.maxWeight;
   return el('div', {}, [
@@ -86,38 +167,42 @@ function renderGliderPrep(glider) {
     ])
   ]);
 }
+
 async function fetchJSON(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error('Fetch failed: ' + res.status);
   return res.json();
 }
 
-function renderMetarDecoded(m) {
-  const p = m || {};
-  const parts = [];
-  if (p.icaoId) parts.push(`Station: ${p.icaoId}`);
-  if (p.obsTime) parts.push(`Time: ${p.obsTime}`);
-  if (p.windDir !== undefined && p.windSpeed !== undefined) {
-    const gust = p.windGust ? ` gust ${p.windGust} kt` : '';
-    parts.push(`Wind: ${p.windDir}° at ${p.windSpeed} kt${gust}`);
-  }
-  if (p.visibility) parts.push(`Visibility: ${p.visibility} sm`);
-  if (p.clouds && p.clouds.length) {
-    const clouds = p.clouds.map(c => `${c.cover} ${c.base?c.base+' ft':''}`.trim()).join(', ');
-    parts.push(`Clouds: ${clouds}`);
-  }
-  if (p.temp && p.dew) parts.push(`Temp/Dew: ${p.temp}°C / ${p.dew}°C`);
-  if (p.altim) parts.push(`Altimeter: ${p.altim} inHg`);
-  if (p.remarks) parts.push(`Remarks: ${p.remarks}`);
-  return parts.join('\n');
-}
 function metarCard(entry) {
-  const raw = entry.rawOb || entry.rawText || '(raw text unavailable)';
-  const decoded = renderMetarDecoded(entry);
+  const icao = entry.icaoId || '';
+  const name = entry.name || '';
+  const cat  = entry.fltCat || '';
+
+  const header = [icao, name].filter(Boolean).join(' – ');
+  const tag = cat ? el('span', { class: 'wx-tag ' + cat, text: cat }) : null;
+
+  // Plain-English list
+  const bullets = plainEnglish(entry).map(line => el('li', { text: line }));
+
+  // Raw METAR (collapsible)
+  const raw  = entry.raw || entry.rawOb || entry.rawText || '(raw text unavailable)';
+  const details = el('details', {}, [
+    el('summary', { text: 'Show Raw METAR' }),
+    el('pre', {}, [ raw ])
+  ]);
+
   return el('div', { class: 'card wx' }, [
-    el('h3', { text: `METAR ${entry.icaoId || ''}` }),
-    el('pre', {}, [ raw ]),
-    el('pre', {}, [ decoded ])
+    el('h3', {}, [document.createTextNode(header), tag ? document.createTextNode(' ') : null, tag]),
+    el('ul', {}, bullets),
+    details
+  ]);
+}
+
+
+  return el('div', { class: 'card wx' }, [
+    el('h3', {}, [document.createTextNode(header), tag ? document.createTextNode(' ') : null, tag]),
+    details
   ]);
 }
 
@@ -126,23 +211,32 @@ async function loadStation(station, root) {
   const url = '/.netlify/functions/metar?ids=' + encodeURIComponent(station);
   try {
     const data = await fetchJSON(url);
-    const items = (data && data.metars) || data || [];
-    if (!items.length) root.appendChild(el('div', { class: 'card wx' }, [ el('p', { text: 'No recent METAR available.' }) ]));
+    if (data && data.error) throw new Error(data.error);
+    const items = toArray(data);
+    if (!items.length) {
+      root.appendChild(el('div', { class: 'card wx' }, [ el('p', { text: 'No recent METAR available.' }) ]));
+      return;
+    }
     items.forEach(e => root.appendChild(metarCard(e)));
   } catch (e) {
-    root.appendChild(el('div', { class: 'card wx' }, [ el('p', { class: 'bad', text: e.message }) ]));
+    root.appendChild(el('div', { class: 'card wx' }, [ el('p', { class: 'bad', text: 'Fetch failed: ' + e.message }) ]));
   }
 }
+
 async function loadNearby(center, miles, root) {
   document.querySelectorAll('.wx').forEach(e => e.remove());
   const url = '/.netlify/functions/metar?near=' + encodeURIComponent(center) + '&radius=' + miles;
   try {
     const data = await fetchJSON(url);
-    const items = (data && data.metars) || data || [];
-    if (!items.length) root.appendChild(el('div', { class: 'card wx' }, [ el('p', { text: 'No nearby METARs found.' }) ]));
+    if (data && data.error) throw new Error(data.error);
+    const items = toArray(data);
+    if (!items.length) {
+      root.appendChild(el('div', { class: 'card wx' }, [ el('p', { text: 'No nearby METARs found.' }) ]));
+      return;
+    }
     items.forEach(e => root.appendChild(metarCard(e)));
   } catch (e) {
-    root.appendChild(el('div', { class: 'card wx' }, [ el('p', { class: 'bad', text: e.message }) ]));
+    root.appendChild(el('div', { class: 'card wx' }, [ el('p', { class: 'bad', text: 'Fetch failed: ' + e.message }) ]));
   }
 }
 
@@ -160,6 +254,7 @@ async function renderWeather() {
   await loadStation('KGRK', container);
   return container;
 }
+
 function renderEmergency() {
   return el('div', {}, [
     navButton('← Back', 'home'),
