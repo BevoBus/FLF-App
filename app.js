@@ -6,7 +6,9 @@ const gliders = [
   { name: 'Grob 103', maxWeight: 620 },
   { name: 'Schweizer 2-33', maxWeight: 550 }
 ];
-
+function toArray(d) {
+  return Array.isArray(d) ? d : (d ? [d] : []);
+}
 const checklistItems = [
   'Pre-flight inspection',
   'Canopy closed & locked',
