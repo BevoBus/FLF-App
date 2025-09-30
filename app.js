@@ -178,21 +178,41 @@ function metarCard(entry) {
   const icao = entry.icaoId || '';
   const name = entry.name || '';
   const cat  = entry.fltCat || '';
-  const raw  = entry.raw || entry.rawOb || entry.rawText || '(raw text unavailable)';
 
   const header = [icao, name].filter(Boolean).join(' – ');
   const tag = cat ? el('span', { class: 'wx-tag ' + cat, text: cat }) : null;
 
-  const details = el('details', {}, [
-    el('summary', { text: 'Show Raw Text' }),
-    el('pre', {}, [ raw ])
+  // Plain-English list
+  const bullets = plainEnglish(entry).map(line => el('li', { text: line }));
+
+  // --- Raw METAR toggle ---
+  const raw = entry.raw || entry.rawOb || entry.rawText || '';
+  const rawWrapper = el('div', { class: 'raw-wrapper', style: raw ? '' : 'display:none;' });
+
+  const rawPre = el('pre', { style: 'display:none; margin-top:0.5rem;' }, [
+    raw || '(raw text unavailable)'
   ]);
 
+  const rawBtn = el('button', {
+    text: 'Show Raw METAR',
+    onclick: () => {
+      const visible = rawPre.style.display !== 'none';
+      rawPre.style.display = visible ? 'none' : 'block';
+      rawBtn.textContent = visible ? 'Show Raw METAR' : 'Hide Raw METAR';
+    }
+  });
+
+  rawWrapper.appendChild(rawBtn);
+  rawWrapper.appendChild(rawPre);
+
+  // Card
   return el('div', { class: 'card wx' }, [
     el('h3', {}, [document.createTextNode(header), tag ? document.createTextNode(' ') : null, tag]),
-    details
+    el('ul', {}, bullets),
+    rawWrapper
   ]);
 }
+
 
 async function loadStation(station, root) {
   document.querySelectorAll('.wx').forEach(e => e.remove());
