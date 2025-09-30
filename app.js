@@ -114,39 +114,65 @@ function renderMetarDecoded(m) {
   return parts.join('\n');
 }
 function metarCard(entry) {
-  const raw = entry.rawOb || entry.rawText || '(raw text unavailable)';
-  const decoded = renderMetarDecoded(entry);
+  const icao = entry.icaoId || '';
+  const name = entry.name || '';
+  const cat  = entry.fltCat || '';
+  const raw  = entry.raw || entry.rawOb || entry.rawText || '(raw text unavailable)';
+
+  // very light formatting until we do the full cleanup
+  const header = [icao, name].filter(Boolean).join(' – ');
+  const tag = cat ? ` (${cat})` : '';
+
   return el('div', { class: 'card wx' }, [
-    el('h3', { text: `METAR ${entry.icaoId || ''}` }),
-    el('pre', {}, [ raw ]),
-    el('pre', {}, [ decoded ])
+    el('h3', { text: header + tag }),
+    el('pre', {}, [ raw ])
   ]);
 }
 
 async function loadStation(station, root) {
+  // remove previous weather cards
   document.querySelectorAll('.wx').forEach(e => e.remove());
+
   const url = '/.netlify/functions/metar?ids=' + encodeURIComponent(station);
   try {
     const data = await fetchJSON(url);
-    const items = (data && data.metars) || data || [];
-    if (!items.length) root.appendChild(el('div', { class: 'card wx' }, [ el('p', { text: 'No recent METAR available.' }) ]));
+    const items = toArray(data);          // <- object -> [object]
+    if (!items.length) {
+      root.appendChild(el('div', { class: 'card wx' }, [
+        el('p', { text: 'No recent METAR available.' })
+      ]));
+      return;
+    }
     items.forEach(e => root.appendChild(metarCard(e)));
   } catch (e) {
-    root.appendChild(el('div', { class: 'card wx' }, [ el('p', { class: 'bad', text: e.message }) ]));
+    root.appendChild(el('div', { class: 'card wx' }, [
+      el('p', { class: 'bad', text: 'Fetch failed: ' + e.message })
+    ]));
   }
 }
+
 async function loadNearby(center, miles, root) {
+  // remove previous weather cards
   document.querySelectorAll('.wx').forEach(e => e.remove());
+
   const url = '/.netlify/functions/metar?near=' + encodeURIComponent(center) + '&radius=' + miles;
   try {
     const data = await fetchJSON(url);
-    const items = (data && data.metars) || data || [];
-    if (!items.length) root.appendChild(el('div', { class: 'card wx' }, [ el('p', { text: 'No nearby METARs found.' }) ]));
+    const items = toArray(data);          // <- array stays array
+    if (!items.length) {
+      root.appendChild(el('div', { class: 'card wx' }, [
+        el('p', { text: 'No nearby METARs found.' })
+      ]));
+      return;
+    }
     items.forEach(e => root.appendChild(metarCard(e)));
   } catch (e) {
-    root.appendChild(el('div', { class: 'card wx' }, [ el('p', { class: 'bad', text: e.message }) ]));
+    root.appendChild(el('div', { class: 'card wx' }, [
+      el('p', { class: 'bad', text: 'Fetch failed: ' + e.message })
+    ]));
   }
 }
+
 
 async function renderWeather() {
   const container = el('div', {});
