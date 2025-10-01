@@ -49,7 +49,7 @@ exports.handler = async function(event, context) {
       };
     }
 
-    // --- Single station ---
+    // Single station
     if (params.ids) {
       const icao = params.ids.toUpperCase().trim();
       const raw = await fetchJson(`/api/data/metar?ids=${encodeURIComponent(icao)}&format=${format}`);
@@ -62,7 +62,7 @@ exports.handler = async function(event, context) {
       return { statusCode: 200, headers, body: JSON.stringify(out) };
     }
 
-    // --- Nearby stations ---
+    // Nearby stations
     if (params.near) {
       const center = params.near.toUpperCase().trim();
       const radiusMiles = Math.max(1, Math.min(300, Number(params.radius || 100)));
@@ -73,7 +73,6 @@ exports.handler = async function(event, context) {
         return { statusCode: 404, headers, body: JSON.stringify({ error: "Center airport not found" }) };
       }
 
-      // helpers
       const milesToLatDeg = (mi) => mi / 69.0;
       const milesToLonDeg = (mi, lat) => mi / (69.172 * Math.cos(lat * Math.PI / 180));
       const toRad = (d) => d * Math.PI / 180;
@@ -85,7 +84,7 @@ exports.handler = async function(event, context) {
       }
 
       function distanceNm(lat1, lon1, lat2, lon2) {
-        const R = 3440.065; // Earth radius in nautical miles
+        const R = 3440.065; // nautical miles
         const φ1 = toRad(lat1), φ2 = toRad(lat2);
         const dφ = toRad(lat2 - lat1);
         const dλ = toRad(lon2 - lon1);
@@ -146,12 +145,9 @@ exports.handler = async function(event, context) {
       return { statusCode: 200, headers, body: JSON.stringify(results.slice(0, 60)) };
     }
 
-    // --- Fallback ---
     return { statusCode: 400, headers, body: JSON.stringify({ error: "Use ?ids=KGRK or ?near=KGRK&radius=100" }) };
 
   } catch (e) {
     return { statusCode: 500, headers, body: JSON.stringify({ error: e.message }) };
   }
 };
-
-//test comment

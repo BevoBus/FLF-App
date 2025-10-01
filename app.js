@@ -1,3 +1,6 @@
+// Build tag for verification
+window.__BUILD = "WX-DROPDOWN-1";
+
 let page = 'home';
 let selectedGlider = null;
 
@@ -20,83 +23,6 @@ let pilotWeight = 0;
 let passengerWeight = 0;
 let ballast = 0;
 
-// ----- Plain-English helpers -----
-function zulu(dt) {
-  try {
-    // supports "2025-09-15T02:00:00.000Z" or epoch seconds
-    if (typeof dt === 'number') return new Date(dt * 1000).toISOString().replace('.000','');
-    if (typeof dt === 'string') return new Date(dt).toISOString().replace('.000','');
-  } catch {}
-  return '';
-}
-
-function cardinalFromDegrees(deg) {
-  if (deg == null || isNaN(deg)) return '';
-  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
-  const i = Math.round(((deg % 360) / 22.5)) % 16;
-  return dirs[i];
-}
-
-function formatClouds(clouds) {
-  if (!Array.isArray(clouds) || clouds.length === 0) return 'Clear';
-  return clouds.map(c => {
-    const cover = c.cover || '';
-    const base = (c.baseFt ?? c.base);
-    const prettyBase = (base || base === 0) ? `${base.toLocaleString()} ft` : '';
-    // Translate FEW/SCT/BKN/OVC to words for students
-    const coverWord = ({
-      FEW: 'Few',
-      SCT: 'Scattered',
-      BKN: 'Broken',
-      OVC: 'Overcast'
-    }[cover] || cover);
-    return prettyBase ? `${coverWord} at ${prettyBase}` : coverWord;
-  }).join(', ');
-}
-
-function plainEnglish(entry) {
-  const w = entry.weather || {};
-  const lines = [];
-
-  // Flight category tag is visually shown; still include words for learners
-  if (entry.fltCat) lines.push(`Flight category: ${entry.fltCat}`);
-
-  // Time
-  const timeZ = zulu(entry.time);
-  if (timeZ) lines.push(`Observation time: ${timeZ.replace('T',' ').replace('Z','Z')}`);
-
-  // Wind
-  if (w.wind) {
-    // If wind like "100° at 9 kt", include cardinal
-    const m = /(\d+)[°] at (\d+)/.exec(w.wind || '');
-    if (m) {
-      const dir = Number(m[1]);
-      const spd = Number(m[2]);
-      lines.push(`Wind: ${cardinalFromDegrees(dir)} (${dir}°) at ${spd} kt`);
-    } else {
-      lines.push(`Wind: ${w.wind}`);
-    }
-  }
-
-  // Visibility
-  if (w.visibility) lines.push(`Visibility: ${w.visibility}`);
-
-  // Clouds
-  lines.push(`Clouds: ${formatClouds(entry.clouds)}`);
-
-  // Temps
-  if (w.tempC != null || w.dewpointC != null) {
-    const t = (w.tempC != null) ? `${w.tempC.toFixed ? w.tempC.toFixed(1) : w.tempC}°C` : '—';
-    const d = (w.dewpointC != null) ? `${w.dewpointC.toFixed ? w.dewpointC.toFixed(1) : w.dewpointC}°C` : '—';
-    lines.push(`Temperature/Dewpoint: ${t} / ${d}`);
-  }
-
-  // Altimeter
-  if (w.altimeterInHg != null) lines.push(`Altimeter: ${w.altimeterInHg} inHg`);
-
-  return lines;
-}
-
 function el(tag, attrs={}, children=[]) {
   const e = document.createElement(tag);
   Object.entries(attrs).forEach(([k,v]) => {
@@ -115,10 +41,80 @@ function navButton(label, to) {
 
 function toArray(d){ return Array.isArray(d) ? d : (d ? [d] : []); }
 
+// Helpers
+function zulu(dt) {
+  try {
+    if (typeof dt === 'number') return new Date(dt * 1000).toISOString().replace('.000','');
+    if (typeof dt === 'string') return new Date(dt).toISOString().replace('.000','');
+  } catch {}
+  return '';
+}
+
+function cardinalFromDegrees(deg) {
+  if (deg == null || isNaN(deg)) return '';
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  const i = Math.round(((deg % 360) / 22.5)) % 16;
+  return dirs[i];
+}
+
+function formatClouds(clouds) {
+  if (!Array.isArray(clouds) || clouds.length === 0) return 'Clear';
+  return clouds.map(c => {
+    const cover = c.cover || '';
+    const base = (c.baseFt ?? c.base);
+    const prettyBase = (base || base === 0) ? `${Number(base).toLocaleString()} ft` : '';
+    const coverWord = ({
+      FEW: 'Few',
+      SCT: 'Scattered',
+      BKN: 'Broken',
+      OVC: 'Overcast'
+    }[cover] || cover);
+    return prettyBase ? `${coverWord} at ${prettyBase}` : coverWord;
+  }).join(', ');
+}
+
+function plainEnglish(entry) {
+  const w = entry.weather || {};
+  const lines = [];
+  if (entry.fltCat) lines.push(`Flight category: ${entry.fltCat}`);
+  const timeZ = zulu(entry.time);
+  if (timeZ) lines.push(`Observation time: ${timeZ.replace('T',' ').replace('Z','Z')}`);
+  if (w.wind) {
+    const m = /(\d+)[°] at (\d+)/.exec(w.wind || '');
+    if (m) {
+      const dir = Number(m[1]);
+      const spd = Number(m[2]);
+      lines.push(`Wind: ${cardinalFromDegrees(dir)} (${dir}°) at ${spd} kt`);
+    } else {
+      lines.push(`Wind: ${w.wind}`);
+    }
+  }
+  if (w.visibility) lines.push(`Visibility: ${w.visibility}`);
+  lines.push(`Clouds: ${formatClouds(entry.clouds)}`);
+  if (w.tempC != null || w.dewpointC != null) {
+    const t = (w.tempC != null) ? `${(Number(w.tempC)).toFixed(1)}°C` : '—';
+    const d = (w.dewpointC != null) ? `${(Number(w.dewpointC)).toFixed(1)}°C` : '—';
+    lines.push(`Temperature/Dewpoint: ${t} / ${d}`);
+  }
+  if (w.altimeterInHg != null) lines.push(`Altimeter: ${w.altimeterInHg} inHg`);
+  return lines;
+}
+
+function stationOptionLabel(e) {
+  const dist = (e.distanceNm != null) ? `${e.distanceNm} nm` : '';
+  const dir  = e.bearingCard || '';
+  const parts = [];
+  if (dist || dir) parts.push([dist, dir].filter(Boolean).join(' '));
+  if (e.icaoId) parts.push(e.icaoId);
+  if (e.name) parts.push(e.name);
+  return parts.join(' — ');
+}
+
+// HOME
 function renderHome() {
   return el('div', {}, [
     el('h1', { text: 'Welcome to the Gliding Club App' }),
-    el('p', { class: 'muted', text: 'Select a section below to get started.' }),
+    el('p', { class: 'muted', text: `Build: ${window.__BUILD}` }),
     el('div', { class: 'card' }, [
       navButton('Weather Briefing', 'weather'),
       navButton('Glider Preparation', 'gliders'),
@@ -127,6 +123,7 @@ function renderHome() {
   ]);
 }
 
+// GLIDERS
 function renderGliders() {
   return el('div', {}, [
     navButton('← Back', 'home'),
@@ -168,6 +165,7 @@ function renderGliderPrep(glider) {
   ]);
 }
 
+// WEATHER
 async function fetchJSON(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error('Fetch failed: ' + res.status);
@@ -182,17 +180,11 @@ function metarCard(entry) {
   const header = [icao, name].filter(Boolean).join(' – ');
   const tag = cat ? el('span', { class: 'wx-tag ' + cat, text: cat }) : null;
 
-  // Plain-English list
   const bullets = plainEnglish(entry).map(line => el('li', { text: line }));
 
-  // --- Raw METAR toggle ---
   const raw = entry.raw || entry.rawOb || entry.rawText || '';
   const rawWrapper = el('div', { class: 'raw-wrapper', style: raw ? '' : 'display:none;' });
-
-  const rawPre = el('pre', { style: 'display:none; margin-top:0.5rem;' }, [
-    raw || '(raw text unavailable)'
-  ]);
-
+  const rawPre = el('pre', { style: 'display:none; margin-top:0.5rem;' }, [ raw || '(raw text unavailable)' ]);
   const rawBtn = el('button', {
     text: 'Show Raw METAR',
     onclick: () => {
@@ -201,18 +193,15 @@ function metarCard(entry) {
       rawBtn.textContent = visible ? 'Show Raw METAR' : 'Hide Raw METAR';
     }
   });
-
   rawWrapper.appendChild(rawBtn);
   rawWrapper.appendChild(rawPre);
 
-  // Card
   return el('div', { class: 'card wx' }, [
     el('h3', {}, [document.createTextNode(header), tag ? document.createTextNode(' ') : null, tag]),
     el('ul', {}, bullets),
     rawWrapper
   ]);
 }
-
 
 async function loadStation(station, root) {
   document.querySelectorAll('.wx').forEach(e => e.remove());
@@ -252,17 +241,52 @@ async function renderWeather() {
   const container = el('div', {});
   container.appendChild(navButton('← Back', 'home'));
   container.appendChild(el('h2', { text: 'Weather Briefing' }));
+
+  const nearbySelect = el('select', { id: 'nearbySelect' }, [
+    el('option', { value: '', text: 'Select a nearby station…' })
+  ]);
+
   const controls = el('div', { class: 'card' }, [
     el('label', {}, [ 'Station (ICAO):', el('input', { id: 'stationInput', value: 'KGRK' }) ]),
     el('button', { text: 'Refresh', onclick: async () => { await loadStation(document.getElementById('stationInput').value.trim().toUpperCase(), container); } }),
     el('button', { text: 'Nearby (100 mi)', onclick: async () => { await loadNearby(document.getElementById('stationInput').value.trim().toUpperCase(), 100, container); } }),
+    el('button', { text: 'Load Nearby List', onclick: async () => {
+      const center = document.getElementById('stationInput').value.trim().toUpperCase() || 'KGRK';
+      nearbySelect.replaceChildren(el('option', { value: '', text: 'Loading…' }));
+      try {
+        const data = await fetchJSON('/.netlify/functions/metar?near=' + encodeURIComponent(center) + '&radius=100');
+        const items = toArray(data);
+        if (!items.length) {
+          nearbySelect.replaceChildren(el('option', { value: '', text: 'No stations found' }));
+          return;
+        }
+        const opts = [ el('option', { value: '', text: `Nearby stations from ${center}…` }) ];
+        items.forEach(e => {
+          const opt = el('option', { value: e.icaoId, text: stationOptionLabel(e) });
+          opts.push(opt);
+        });
+        nearbySelect.replaceChildren(...opts);
+      } catch (err) {
+        nearbySelect.replaceChildren(el('option', { value: '', text: 'Error loading list' }));
+      }
+    }}),
+    nearbySelect,
     el('p', { class: 'muted', text: 'Data via AviationWeather.gov. Default: KGRK.' })
   ]);
   container.appendChild(controls);
+
+  nearbySelect.onchange = async () => {
+    const val = nearbySelect.value;
+    if (!val) return;
+    document.getElementById('stationInput').value = val;
+    await loadStation(val, container);
+  };
+
   await loadStation('KGRK', container);
   return container;
 }
 
+// EMERGENCY
 function renderEmergency() {
   return el('div', {}, [
     navButton('← Back', 'home'),
@@ -273,6 +297,7 @@ function renderEmergency() {
   ]);
 }
 
+// ROUTER
 function render() {
   const app = document.getElementById('app');
   app.innerHTML = '';
