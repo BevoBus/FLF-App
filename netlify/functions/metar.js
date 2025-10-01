@@ -49,6 +49,7 @@ exports.handler = async function(event, context) {
       };
     }
 
+    // --- Single station ---
     if (params.ids) {
       const icao = params.ids.toUpperCase().trim();
       const raw = await fetchJson(`/api/data/metar?ids=${encodeURIComponent(icao)}&format=${format}`);
@@ -61,6 +62,7 @@ exports.handler = async function(event, context) {
       return { statusCode: 200, headers, body: JSON.stringify(out) };
     }
 
+    // --- Nearby stations ---
     if (params.near) {
       const center = params.near.toUpperCase().trim();
       const radiusMiles = Math.max(1, Math.min(300, Number(params.radius || 100)));
@@ -71,7 +73,7 @@ exports.handler = async function(event, context) {
         return { statusCode: 404, headers, body: JSON.stringify({ error: "Center airport not found" }) };
       }
 
-      // helpers for bbox + distance/bearing
+      // helpers
       const milesToLatDeg = (mi) => mi / 69.0;
       const milesToLonDeg = (mi, lat) => mi / (69.172 * Math.cos(lat * Math.PI / 180));
       const toRad = (d) => d * Math.PI / 180;
@@ -104,7 +106,6 @@ exports.handler = async function(event, context) {
 
       const latC = Number(ap.lat), lonC = Number(ap.lon);
 
-      // BBox query
       const dLat = milesToLatDeg(radiusMiles), dLon = milesToLonDeg(radiusMiles, latC);
       const bbox = `${(latC - dLat).toFixed(4)},${(lonC - dLon).toFixed(4)},${(latC + dLat).toFixed(4)},${(lonC + dLon).toFixed(4)}`;
 
@@ -118,7 +119,6 @@ exports.handler = async function(event, context) {
         if (!id || seen.has(id)) continue;
         seen.add(id);
 
-        // Compute distance/bearing when coords exist
         const lat = Number(m.lat), lon = Number(m.lon);
         let dist = null, brg = null, card = null;
         if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
@@ -129,14 +129,13 @@ exports.handler = async function(event, context) {
 
         const norm = normalizeMetar(m);
         if (norm) {
-          norm.distanceNm = dist != null ? Math.round(dist) : null;      // rounded to nearest nm
-          norm.bearingDeg = brg != null ? Math.round(brg) : null;        // integer degrees
-          norm.bearingCard = card || null;                                // e.g., "SW"
+          norm.distanceNm = dist != null ? Math.round(dist) : null;
+          norm.bearingDeg = brg != null ? Math.round(brg) : null;
+          norm.bearingCard = card || null;
           results.push(norm);
         }
       }
 
-      // Sort by distance (nulls last)
       results.sort((a,b) => {
         if (a.distanceNm == null && b.distanceNm == null) return 0;
         if (a.distanceNm == null) return 1;
@@ -144,36 +143,13 @@ exports.handler = async function(event, context) {
         return a.distanceNm - b.distanceNm;
       });
 
-      // limit to ~60
       return { statusCode: 200, headers, body: JSON.stringify(results.slice(0, 60)) };
     }
 
-      const milesToLatDeg = (mi) => mi / 69.0;
-      const milesToLonDeg = (mi, lat) => mi / (69.172 * Math.cos(lat * Math.PI / 180));
-      const lat = Number(ap.lat), lon = Number(ap.lon);
-      const dLat = milesToLatDeg(radiusMiles), dLon = milesToLonDeg(radiusMiles, lat);
-      const bbox = `${(lat - dLat).toFixed(4)},${(lon - dLon).toFixed(4)},${(lat + dLat).toFixed(4)},${(lon + dLon).toFixed(4)}`;
-
-      const raw = await fetchJson(`/api/data/metar?bbox=${bbox}&format=${format}`);
-      const arr = toArray(raw);
-
-      const seen = new Set();
-      const results = [];
-      for (const m of arr) {
-        const id = m.icaoId || "";
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
-        const norm = normalizeMetar(m);
-        if (norm) results.push(norm);
-      }
-
-      return { statusCode: 200, headers, body: JSON.stringify(results) };
-    }
-
+    // --- Fallback ---
     return { statusCode: 400, headers, body: JSON.stringify({ error: "Use ?ids=KGRK or ?near=KGRK&radius=100" }) };
 
   } catch (e) {
     return { statusCode: 500, headers, body: JSON.stringify({ error: e.message }) };
   }
 };
-
